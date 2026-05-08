@@ -1,0 +1,5 @@
+{
+  "ethereum": "YOUR_ETHERSCAN_API_KEY",
+  "bsc": "YOUR_BSCSCAN_API_KEY",
+  "base": "YOUR_BASESCAN_API_KEY"
+}

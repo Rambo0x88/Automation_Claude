@@ -1,0 +1,22 @@
+{
+  "explorers": [
+    {
+      "name": "Etherscan",
+      "base_url": "https://etherscan.io",
+      "username": "guatfern",
+      "password": "Orion888!!!!"
+    },
+    {
+      "name": "BSCScan",
+      "base_url": "https://bscscan.com",
+      "username": "guatfern",
+      "password": "Orion888!!!!"
+    },
+    {
+      "name": "BaseScan",
+      "base_url": "https://basescan.org",
+      "username": "moontest1803",
+      "password": "Orion888!!!!"
+    }
+  ]
+}

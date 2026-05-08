@@ -1,0 +1,43 @@
+# Environment & secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+env/
+.venv/
+
+# Test artifacts
+test-results/
+videos/
+*.png
+*.mp4
+*.webm
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Large data files
+*.csv
+Coingecko\ Coin\ ID\ List.xlsx
+holders_*.csv
+
+# Sensitive credentials — never commit these
+test_data/exchange_keys.json
+test_data/tc0_account.json
+test_data/tc1_account.json
+test_data/tc_dune_wallet.json
+test_data/blockchain_explorer_api_keys.json
