@@ -17,8 +17,14 @@ import hmac
 import hashlib
 import time
 import json
+import smtplib
+import os
 import requests
 from datetime import datetime
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email.mime.text import MIMEText
+from email import encoders
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
@@ -36,6 +42,12 @@ PORTFOLIO_ID   = "6cc8ad6a-8249-4a6e-be62-d7c968fe8dac"
 
 MATRIXPORT_BASE = "https://mapi.matrixport.com"
 OUTPUT_FILE     = "matrixport_balance.xlsx"
+
+# ── EMAIL CONFIG ──────────────────────────────────────────────────────────────
+# Generate a Gmail App Password at: https://myaccount.google.com/apppasswords
+GMAIL_SENDER       = "merqbcqa2@gmail.com"
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD", "")  # set env var or paste here
+EMAIL_RECIPIENT    = "roninx688@gmail.com"
 
 # ── MATRIXPORT AUTH ───────────────────────────────────────────────────────────
 
@@ -178,7 +190,7 @@ def _border_row(ws, row: int, ncols: int):
             left=THIN, right=THIN, top=THIN, bottom=THIN
         )
 
-def export_excel(balance_api, balance_plus, dam_rows, comparison, path: str):
+def export_excel(balance_api, balance_plus, dam_rows, comparison, path: str, overall: str = "", reason: str = ""):
     wb = Workbook()
 
     # Sheet 1 — Balance API
@@ -215,14 +227,25 @@ def export_excel(balance_api, balance_plus, dam_rows, comparison, path: str):
 
     # Sheet 4 — Comparison
     ws4 = wb.create_sheet("4. Comparison Report")
+
+    # Verdict row
+    verdict_color = "375623" if overall == "PASSED" else "9C0006"
+    ws4.append([f"RESULT: {overall}", reason, f"Run: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"])
+    for col in range(1, 4):
+        c = ws4.cell(row=1, column=col)
+        c.font      = Font(bold=True, color="FFFFFF", size=12)
+        c.fill      = PatternFill("solid", fgColor=verdict_color)
+        c.alignment = Alignment(horizontal="left", vertical="center")
+        c.border    = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+    ws4.row_dimensions[1].height = 20
+
     h4  = list(comparison[0].keys()) if comparison else []
     ws4.append(h4)
-    _header(ws4, 1, len(h4))
+    _header(ws4, 2, len(h4))
     for row_data in comparison:
         ws4.append(list(row_data.values()))
-        row_idx   = ws4.max_row
-        is_match  = row_data["Status"] == "MATCH"
-        fill_hex  = MATCH_FILL if is_match else MISMATCH_FILL
+        row_idx  = ws4.max_row
+        fill_hex = MATCH_FILL if row_data["Status"] == "MATCH" else MISMATCH_FILL
         for col in range(1, len(h4) + 1):
             c = ws4.cell(row=row_idx, column=col)
             c.fill   = PatternFill("solid", fgColor=fill_hex)
@@ -231,6 +254,40 @@ def export_excel(balance_api, balance_plus, dam_rows, comparison, path: str):
 
     wb.save(path)
     print(f"\n[Export] Saved → {path}")
+
+# ── EMAIL ─────────────────────────────────────────────────────────────────────
+
+def send_email(overall: str, reason: str, attachment_path: str):
+    if not GMAIL_APP_PASSWORD:
+        print("[Email] Skipped — GMAIL_APP_PASSWORD not set.")
+        return
+
+    subject = f"Matrixport Balance Report – {datetime.now().strftime('%Y-%m-%d')}  [{overall}]"
+    body    = (
+        f"Matrixport Balance Check\n"
+        f"Run time : {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"Result   : {overall}\n"
+        f"Detail   : {reason}\n\n"
+        f"See the attached Excel report for the full breakdown."
+    )
+
+    msg = MIMEMultipart()
+    msg["From"]    = GMAIL_SENDER
+    msg["To"]      = EMAIL_RECIPIENT
+    msg["Subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    with open(attachment_path, "rb") as f:
+        part = MIMEBase("application", "octet-stream")
+        part.set_payload(f.read())
+    encoders.encode_base64(part)
+    part.add_header("Content-Disposition", f'attachment; filename="{os.path.basename(attachment_path)}"')
+    msg.attach(part)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(GMAIL_SENDER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_SENDER, EMAIL_RECIPIENT, msg.as_string())
+    print(f"[Email] Report sent to {EMAIL_RECIPIENT}")
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
@@ -258,7 +315,24 @@ def main():
               f"{r['Total API']:>14.8f} {r['DAM Total Amount']:>14.8f} "
               f"{r['Difference']:>12.8f}  {icon} {r['Status']}")
 
-    export_excel(balance_api, balance_plus, dam_rows, comparison, OUTPUT_FILE)
+    if not comparison:
+        overall = "FAILED"
+        reason  = "No DAM portfolio data to compare"
+    elif all(r["Status"] == "MATCH" for r in comparison):
+        overall = "PASSED"
+        reason  = f"All {len(comparison)} token(s) matched"
+    else:
+        mismatches = [r["Token"] for r in comparison if r["Status"] != "MATCH"]
+        overall = "FAILED"
+        reason  = f"{len(mismatches)} mismatch(es): {', '.join(mismatches)}"
+
+    print("\n" + "=" * 60)
+    verdict_icon = "✅" if overall == "PASSED" else "❌"
+    print(f"OVERALL RESULT:  {verdict_icon} {overall}  —  {reason}")
+    print("=" * 60)
+
+    export_excel(balance_api, balance_plus, dam_rows, comparison, OUTPUT_FILE, overall, reason)
+    send_email(overall, reason, OUTPUT_FILE)
 
 if __name__ == "__main__":
     main()
